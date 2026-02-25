@@ -100,27 +100,62 @@ def extract_text_from_pdf(uploaded_file) -> tuple[str, Optional[str]]:
         return "", f"Failed to process PDF: {str(e)}"
 
 
-def summarize_content(content: str) -> tuple[str, Optional[str]]:
+GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"]
+
+
+def _generate(prompt: str, model_name: str, max_tokens: int = 500) -> tuple[str, Optional[str]]:
     try:
-        logger.info("Generating summary via Gemini")
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name)
         response = model.generate_content(
-            SUMMARY_PROMPT + content,
-            generation_config={"temperature": 0.7, "max_output_tokens": 1000},
+            prompt,
+            generation_config={"temperature": 0.7, "max_output_tokens": max_tokens},
         )
         if not response.text:
-            return "", "Gemini returned an empty response."
-        summary = response.text.strip()
-        logger.info("Summary generated successfully")
-        return summary, None
+            return "", "Could not generate a response."
+        return response.text.strip(), None
     except Exception as e:
-        logger.exception(f"Error generating summary: {e}")
-        error_msg = str(e)
+        return "", str(e)
+
+
+def chat_with_assistant(user_message: str) -> tuple[str, Optional[str]]:
+    prompt = f"""You are {ASSISTANT_NAME}, a friendly AI assistant. You have a warm, approachable personality.
+When asked about yourself, say your name is Babs Leye and you're an AI assistant created by Babs Leye.
+Keep responses concise and friendly. Answer in the same language as the user's question.
+
+User: {user_message}
+
+Answer:"""
+    for model_name in GEMINI_MODELS:
+        result, err = _generate(prompt, model_name, 500)
+        if not err:
+            return result, None
+        if "404" in err or "not found" in err.lower():
+            logger.warning(f"Model {model_name} not available, trying next")
+            continue
+        logger.exception(f"Chat error: {err}")
+        return "", f"Error: {err}"
+    return "", "No compatible Gemini model available. Try updating your API key."
+
+
+def summarize_content(content: str) -> tuple[str, Optional[str]]:
+    logger.info("Generating summary via Gemini")
+    prompt = SUMMARY_PROMPT + content
+    for model_name in GEMINI_MODELS:
+        summary, err = _generate(prompt, model_name, 1000)
+        if not err:
+            logger.info("Summary generated successfully")
+            return summary, None
+        if "404" in err or "not found" in err.lower():
+            logger.warning(f"Model {model_name} not available, trying next")
+            continue
+        error_msg = err
         if "rate limit" in error_msg.lower() or "429" in error_msg or "quota" in error_msg.lower():
             return "", "Rate limit exceeded. Please try again in a few moments."
         if "invalid" in error_msg.lower() or "api key" in error_msg.lower() or "api_key" in error_msg.lower():
             return "", "Invalid API configuration. Please check your GOOGLE_API_KEY or GEMINI_API_KEY."
+        logger.exception(f"Summarization error: {err}")
         return "", f"Failed to generate summary: {error_msg}"
+    return "", "No compatible Gemini model available."
 
 
 def render_sidebar():
@@ -158,6 +193,26 @@ def main():
             "On Streamlit Cloud: App settings → Secrets → add GOOGLE_API_KEY"
         )
         st.stop()
+    st.divider()
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+    if prompt := st.chat_input("Pose une question (ex: C'est quoi ton nom ?)"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        with st.chat_message("assistant"):
+            with st.spinner("..."):
+                reply, err = chat_with_assistant(prompt)
+                if err:
+                    st.error(err)
+                else:
+                    st.markdown(reply)
+                    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.divider()
+    st.subheader("📰 Résumer un article ou un PDF")
     input_method = st.radio(
         "How would you like to provide content?",
         ["🔗 Paste a link (URL)", "📄 Upload a PDF"],
