@@ -1,0 +1,27 @@
+# Babs Leye AI Assistant - Fly.io Configuration
+# Deploy with: fly launch (first time) or fly deploy (updates)
+
+app = "babs-leye-assistant"
+
+[build]
+
+[env]
+  # GOOGLE_API_KEY must be set via: fly secrets set GOOGLE_API_KEY=your_key
+
+[http_service]
+  internal_port = 8501
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

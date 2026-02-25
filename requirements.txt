@@ -1,0 +1,6 @@
+# Babs Leye AI Assistant - Dependencies
+streamlit>=1.28.0
+google-generativeai>=0.8.0
+newspaper3k>=0.2.8
+pypdf>=4.0.0
+python-dotenv>=1.0.0
