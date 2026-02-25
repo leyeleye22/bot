@@ -11,7 +11,7 @@ except ImportError:
     pass
 
 import streamlit as st
-from newspaper import Article
+import trafilatura
 from pypdf import PdfReader
 import google.generativeai as genai
 
@@ -57,15 +57,16 @@ def get_gemini_client() -> bool:
 def extract_article_from_url(url: str) -> tuple[str, Optional[str]]:
     try:
         logger.info(f"Fetching article from URL: {url[:80]}...")
-        article = Article(url)
-        article.download()
-        article.parse()
-        if not article.text or len(article.text.strip()) < 50:
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return "", "Could not fetch the URL. Check if the link is valid and accessible."
+        text = trafilatura.extract(downloaded)
+        if not text or len(text.strip()) < 50:
             return "", "Could not extract meaningful content from this URL. It may not be an article page."
-        text = article.text.strip()
+        text = text.strip()
         if len(text) > MAX_CONTENT_LENGTH:
             text = text[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated due to length...]"
-            logger.info(f"Truncated content from {len(article.text)} to {MAX_CONTENT_LENGTH} chars")
+            logger.info(f"Truncated content to {MAX_CONTENT_LENGTH} chars")
         logger.info(f"Successfully extracted {len(text)} characters from URL")
         return text, None
     except Exception as e:

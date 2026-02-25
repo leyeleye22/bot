@@ -1,6 +1,5 @@
 streamlit>=1.28.0
 google-generativeai>=0.8.0
-newspaper3k>=0.2.8
-lxml-html-clean>=0.4.0
+trafilatura>=2.0.0
 pypdf>=4.0.0
 python-dotenv>=1.0.0
