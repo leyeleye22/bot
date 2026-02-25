@@ -100,7 +100,30 @@ def extract_text_from_pdf(uploaded_file) -> tuple[str, Optional[str]]:
         return "", f"Failed to process PDF: {str(e)}"
 
 
-GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"]
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"]
+
+FAST_ANSWERS = [
+    ("ton nom", "Je m'appelle Babs Leye ! Je suis ton assistant IA amical, créé par Babs Leye pour t'aider à résumer des articles et des PDFs."),
+    ("your name", "My name is Babs Leye! I'm your friendly AI assistant, created by Babs Leye to help you summarize articles and PDFs."),
+    ("c'est quoi ton nom", "Je m'appelle Babs Leye !"),
+    ("what's your name", "My name is Babs Leye!"),
+    ("qui t'a créé", "Je suis créé par Babs Leye !"),
+    ("who created you", "I was created by Babs Leye!"),
+    ("qui es-tu", "Je suis Babs Leye, un assistant IA chaleureux qui adore résumer des articles et des documents pour toi."),
+    ("who are you", "I'm Babs Leye, a friendly AI assistant who loves summarizing articles and documents for you."),
+    ("tu fais quoi", "Je résume des articles (liens) et des PDFs, et je réponds à tes questions !"),
+    ("what do you do", "I summarize articles (URLs) and PDFs, and I answer your questions!"),
+]
+
+
+def _is_simple_question(msg: str) -> Optional[str]:
+    msg_lower = msg.lower().strip()
+    if len(msg_lower) > 80:
+        return None
+    for key, answer in FAST_ANSWERS:
+        if key in msg_lower:
+            return answer
+    return None
 
 
 def _generate(prompt: str, model_name: str, max_tokens: int = 500) -> tuple[str, Optional[str]]:
@@ -118,6 +141,9 @@ def _generate(prompt: str, model_name: str, max_tokens: int = 500) -> tuple[str,
 
 
 def chat_with_assistant(user_message: str) -> tuple[str, Optional[str]]:
+    fast = _is_simple_question(user_message)
+    if fast:
+        return fast, None
     prompt = f"""You are {ASSISTANT_NAME}, a friendly AI assistant. You have a warm, approachable personality.
 When asked about yourself, say your name is Babs Leye and you're an AI assistant created by Babs Leye.
 Keep responses concise and friendly. Answer in the same language as the user's question.
@@ -132,6 +158,8 @@ Answer:"""
         if "404" in err or "not found" in err.lower():
             logger.warning(f"Model {model_name} not available, trying next")
             continue
+        if "429" in err or "quota" in err.lower():
+            return "", "Quota API épuisé. Réessaie dans 1 minute ou demain. Les questions simples (ex: ton nom) sont gérées sans API."
         logger.exception(f"Chat error: {err}")
         return "", f"Error: {err}"
     return "", "No compatible Gemini model available. Try updating your API key."
@@ -150,7 +178,7 @@ def summarize_content(content: str) -> tuple[str, Optional[str]]:
             continue
         error_msg = err
         if "rate limit" in error_msg.lower() or "429" in error_msg or "quota" in error_msg.lower():
-            return "", "Rate limit exceeded. Please try again in a few moments."
+            return "", "Quota API épuisé. Réessaie dans 1 minute. Le quota gratuit Gemini est limité par jour."
         if "invalid" in error_msg.lower() or "api key" in error_msg.lower() or "api_key" in error_msg.lower():
             return "", "Invalid API configuration. Please check your GOOGLE_API_KEY or GEMINI_API_KEY."
         logger.exception(f"Summarization error: {err}")
